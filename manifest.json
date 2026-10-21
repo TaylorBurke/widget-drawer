@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "taylorburke.widget-drawer",
+  "name": "Widget Drawer",
+  "version": "1.0.0",
+  "author": "Taylor Burke",
+  "description": "Park bar widgets you aren't using in a drawer instead of uninstalling them. Their plugins stay installed and running; one click puts them back.",
+  "license": "MIT",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Widget Drawer",
+    "description": "One icon holding the widgets you've parked; click to park or restore widgets.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

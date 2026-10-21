@@ -1,0 +1,83 @@
+#!/bin/bash
+# drawerctl: park/restore bar widgets for the Widget Drawer bar widget.
+#
+# Parked entries are kept, settings and all, in a "parked" array on the
+# drawer's own layout entry in ~/.config/omarchy/shell.json, so restoring one
+# brings back exactly what was on the bar. Writes go through Omarchy's own
+# omarchy-shell-config commit(), same as `omarchy bar`.
+#
+#   drawerctl list           JSON: {drawer, bar:[{id,name,section}], parked:[{id,name}]}
+#   drawerctl park <id>      Move a widget from the bar into the drawer
+#   drawerctl restore <id>   Put a parked widget back on the bar, just after the drawer
+set -euo pipefail
+
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+export OMARCHY_PATH
+source omarchy-shell-config
+
+DRAWER="taylorburke.widget-drawer"
+
+# id -> display name, from the plugin catalog. Unknown ids fall back to the id.
+names() {
+  omarchy-plugin-catalog 2>/dev/null \
+    | jq -c 'map(select(.barWidget != null) | {key: .id, value: (.barWidget.displayName // .name // .id)}) | from_entries' \
+    || echo '{}'
+}
+
+# Shared jq defs. entry_id mirrors Bar.qml's entryId: entries are objects
+# with an "id", or bare strings in older configs.
+DEFS='
+  def entry_id: if type == "object" then (.id // "") else tostring end;
+  def sections: ["left", "center", "right"];
+  def drawer_section: first(sections[] as $s | select(any(.bar.layout[$s][]; entry_id == $drawer)) | $s) // null;
+'
+
+cmd_list() {
+  jq -c --arg drawer "$DRAWER" --argjson names "$(names)" "$NORMALIZE | $DEFS"'
+    (first(.bar.layout[sections[]][] | select(entry_id == $drawer)) // {}) as $d
+    | {
+        drawer: (drawer_section != null),
+        bar: [sections[] as $s | .bar.layout[$s][] | entry_id | select(. != $drawer)
+              | {id: ., name: ($names[.] // .), section: $s}],
+        parked: [($d.parked // [])[] | entry_id | {id: ., name: ($names[.] // .)}]
+      }
+  ' "$(source_file)"
+}
+
+cmd_park() {
+  local id=$1
+  [[ $id != "$DRAWER" ]] || fail "the drawer can't park itself"
+  commit "$NORMALIZE | $DEFS"'
+    drawer_section as $ds
+    | if $ds == null then error("drawer is not on the bar") else . end
+    | (first(.bar.layout[sections[]][] | select(entry_id == $id)) // error("\($id) is not on the bar")) as $entry
+    | .bar.layout |= with_entries(
+        if (.key | IN(sections[])) then .value |= map(select(entry_id != $id)) else . end)
+    | .bar.layout[$ds] |= map(
+        if entry_id == $drawer then
+          (if type == "object" then . else {id: .} end)
+          | .parked = (((.parked // []) | map(select(entry_id != $id))) + [$entry])
+        else . end)
+  ' --arg drawer "$DRAWER" --arg id "$id"
+}
+
+cmd_restore() {
+  local id=$1
+  commit "$NORMALIZE | $DEFS"'
+    drawer_section as $ds
+    | if $ds == null then error("drawer is not on the bar") else . end
+    | (first(.bar.layout[$ds][] | select(entry_id == $drawer)) | .parked // []) as $parked
+    | (first($parked[] | select(entry_id == $id)) // error("\($id) is not parked")) as $entry
+    | .bar.layout[$ds] |= (
+        map(if entry_id == $drawer then .parked = ($parked | map(select(entry_id != $id))) else . end)
+        | (map(entry_id) | index($drawer)) as $i
+        | .[:$i + 1] + [$entry] + .[$i + 1:])
+  ' --arg drawer "$DRAWER" --arg id "$id"
+}
+
+case "${1:-}" in
+  list) cmd_list ;;
+  park) [[ -n ${2:-} ]] || fail "usage: drawerctl park <id>"; cmd_park "$2" ;;
+  restore) [[ -n ${2:-} ]] || fail "usage: drawerctl restore <id>"; cmd_restore "$2" ;;
+  *) echo "usage: drawerctl list | park <id> | restore <id>" >&2; exit 2 ;;
+esac
