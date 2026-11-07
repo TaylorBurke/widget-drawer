@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "taylorburke.widget-drawer",
   "name": "Widget Drawer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Taylor Burke",
   "description": "Park bar widgets you aren't using in a drawer instead of uninstalling them. Their plugins stay installed and running; one click puts them back.",
   "license": "MIT",

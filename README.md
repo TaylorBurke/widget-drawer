@@ -27,8 +27,9 @@ Click the drawer icon to open its tile:
 
 - **Parked**: widgets you've put away. Click one to put it back on the bar,
   just after the drawer icon. Drag it from there to wherever you want it.
-- **On the bar**: everything currently on the bar, grouped by Left, Center and
-  Right in bar order. Click one to park it.
+- **On the bar**: everything currently on the bar, grouped by section (Left,
+  Center left, Center, Center right, Right and Tray) in bar order. Click one
+  to park it.
 
 The icon fills in while anything is parked, and its tooltip shows how many.
 

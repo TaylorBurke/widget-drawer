@@ -28,16 +28,19 @@ names() {
 # with an "id", or bare strings in older configs.
 DEFS='
   def entry_id: if type == "object" then (.id // "") else tostring end;
-  def sections: ["left", "center", "right"];
-  def drawer_section: first(sections[] as $s | select(any(.bar.layout[$s][]; entry_id == $drawer)) | $s) // null;
+  # Mirrors Util.barSections. "tray" holds widgets drawn inside the tray drawer;
+  # omarchy-shell-config does not normalize it, so read it with // [].
+  def sections: ["left", "centerBegin", "center", "centerEnd", "right", "tray"];
+  def items($s): (.bar.layout[$s] // [])[];
+  def drawer_section: first(sections[] as $s | select(any(items($s); entry_id == $drawer)) | $s) // null;
 '
 
 cmd_list() {
   jq -c --arg drawer "$DRAWER" --argjson names "$(names)" "$NORMALIZE | $DEFS"'
-    (first(.bar.layout[sections[]][] | select(entry_id == $drawer)) // {}) as $d
+    (first(sections[] as $s | items($s) | select(entry_id == $drawer)) // {}) as $d
     | {
         drawer: (drawer_section != null),
-        bar: [sections[] as $s | .bar.layout[$s][] | entry_id | select(. != $drawer)
+        bar: [sections[] as $s | items($s) | entry_id | select(. != $drawer)
               | {id: ., name: ($names[.] // .), section: $s}],
         parked: [($d.parked // [])[] | entry_id | {id: ., name: ($names[.] // .)}]
       }
@@ -50,9 +53,9 @@ cmd_park() {
   commit "$NORMALIZE | $DEFS"'
     drawer_section as $ds
     | if $ds == null then error("drawer is not on the bar") else . end
-    | (first(.bar.layout[sections[]][] | select(entry_id == $id)) // error("\($id) is not on the bar")) as $entry
+    | (first(sections[] as $s | items($s) | select(entry_id == $id)) // error("\($id) is not on the bar")) as $entry
     | .bar.layout |= with_entries(
-        if (.key | IN(sections[])) then .value |= map(select(entry_id != $id)) else . end)
+        if (.key | IN(sections[])) and (.value | type) == "array" then .value |= map(select(entry_id != $id)) else . end)
     | .bar.layout[$ds] |= map(
         if entry_id == $drawer then
           (if type == "object" then . else {id: .} end)

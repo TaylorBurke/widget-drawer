@@ -187,8 +187,11 @@ BarWidget {
       Repeater {
         model: [
           { key: "left", label: "Left" },
+          { key: "centerBegin", label: "Center left" },
           { key: "center", label: "Center" },
-          { key: "right", label: "Right" }
+          { key: "centerEnd", label: "Center right" },
+          { key: "right", label: "Right" },
+          { key: "tray", label: "Tray" }
         ]
 
         Column {
