@@ -23,15 +23,22 @@ widget, by dragging it or with `omarchy bar move taylorburke.widget-drawer`.
 
 ## Usage
 
-Click the drawer icon to open its tile:
-
-- **Parked**: widgets you've put away. Click one to put it back on the bar,
-  just after the drawer icon. Drag it from there to wherever you want it.
-- **On the bar**: everything currently on the bar, grouped by section (Left,
-  Center left, Center, Center right, Right and Tray) in bar order. Click one
-  to park it.
+Click the drawer icon to open it. It lists the widgets you've parked, each with
+its icon and name. Click one to put it back on the bar, just after the drawer
+icon, then drag it to wherever you want it.
 
 The icon fills in while anything is parked, and its tooltip shows how many.
+
+### Drag to park
+
+Open the drawer and drag any icon from the bar onto it. The drop zone lights up
+and says "Release to park" while the icon is over it; let go and the widget is
+parked, settings included. (The bar would normally delete a widget released off
+the strip. The drawer catches it instead, only when you release over the card.)
+
+You can also drop an icon into the tray's drawer, the one that opens beside the
+tray while you drag; it is parked a moment later. That needs the tray on the
+bar. To turn off both, clear "Park widgets dropped in the tray drawer" in the widget's settings.
 
 ## How it works
 
@@ -51,6 +58,7 @@ then a shell config reload). You can use it from a terminal too:
 drawerctl list               # JSON: widgets on the bar and in the drawer
 drawerctl park <widget-id>
 drawerctl restore <widget-id>
+drawerctl park-tray          # park everything sitting in the tray drawer
 ```
 
 ## Limitations
@@ -58,8 +66,11 @@ drawerctl restore <widget-id>
 - Parked widgets are listed by name; they don't run inside the drawer. Omarchy
   isolates third-party plugins from one another, so one widget can't host
   another's live UI.
-- Parking is click-based rather than drag-and-drop, for the same reason: bar
-  drag state isn't exposed to plugins.
+- You can't drop a widget directly onto the drawer icon: the bar handles drags
+  itself and exposes no drop target to plugins. Dropping onto the open drawer
+  or into the tray drawer is the workaround.
+- Parked widgets' icons are read from the widget's own QML (the first icon
+  character in it). Widgets with none show a generic icon.
 - Removing the drawer from the bar removes its entry, and with it the parked
   list. Restore anything you want to keep first.
 

@@ -9,6 +9,8 @@
 #   drawerctl list           JSON: {drawer, bar:[{id,name,section}], parked:[{id,name}]}
 #   drawerctl park <id>      Move a widget from the bar into the drawer
 #   drawerctl restore <id>   Put a parked widget back on the bar, just after the drawer
+#   drawerctl park-tray      Move every widget in the tray's drawer into the drawer
+#   drawerctl adopt <json>   Park a widget the bar already deleted, from its saved entry
 set -euo pipefail
 
 : "${OMARCHY_PATH:=/usr/share/omarchy}"
@@ -35,14 +37,34 @@ DEFS='
   def drawer_section: first(sections[] as $s | select(any(items($s); entry_id == $drawer)) | $s) // null;
 '
 
+# id -> glyph for the given JSON array of ids. Widgets don't publish an icon, so
+# take the first icon-font character (private use area, where Nerd Font icons
+# live) in the widget's own QML. Ids with none are left out; the UI falls back.
+icons() {
+  local ids=$1 id file glyph
+  export LC_ALL=C.UTF-8
+  omarchy-plugin-catalog 2>/dev/null \
+    | jq -r --argjson ids "$ids" '.[] | select(.id as $i | $ids | index($i)) | [.id, (.sourceDir + "/" + (.entryPoints.barWidget // ""))] | @tsv' \
+    | while IFS=$'\t' read -r id file; do
+        [[ -f $file ]] || continue
+        glyph=$(grep -oP '[\x{E000}-\x{F8FF}\x{F0000}-\x{FFFFD}]' "$file" 2>/dev/null | head -1 || true)
+        [[ -z $glyph ]] || jq -nc --arg k "$id" --arg v "$glyph" '{($k): $v}'
+      done \
+    | jq -sc 'add // {}' || echo '{}'
+}
+
 cmd_list() {
-  jq -c --arg drawer "$DRAWER" --argjson names "$(names)" "$NORMALIZE | $DEFS"'
+  local ids
+  ids=$(jq -c --arg drawer "$DRAWER" "$NORMALIZE | $DEFS"'
+    [((first(sections[] as $s | items($s) | select(entry_id == $drawer)) // {}).parked // [])[] | entry_id]
+  ' "$(source_file)")
+  jq -c --arg drawer "$DRAWER" --argjson names "$(names)" --argjson icons "$(icons "$ids")" "$NORMALIZE | $DEFS"'
     (first(sections[] as $s | items($s) | select(entry_id == $drawer)) // {}) as $d
     | {
         drawer: (drawer_section != null),
         bar: [sections[] as $s | items($s) | entry_id | select(. != $drawer)
               | {id: ., name: ($names[.] // .), section: $s}],
-        parked: [($d.parked // [])[] | entry_id | {id: ., name: ($names[.] // .)}]
+        parked: [($d.parked // [])[] | entry_id | {id: ., name: ($names[.] // .), icon: ($icons[.] // "")}]
       }
   ' "$(source_file)"
 }
@@ -78,9 +100,57 @@ cmd_restore() {
   ' --arg drawer "$DRAWER" --arg id "$id"
 }
 
+# Widgets dragged into the tray's drawer section get parked. Omarchy lets you
+# drop a widget there but not onto a plugin's icon, so the tray drawer is the
+# drop target. Prints how many were waiting; commits only if there were any.
+cmd_park_tray() {
+  local waiting
+  waiting=$(jq --arg drawer "$DRAWER" "$NORMALIZE | $DEFS"'
+    if drawer_section == null then 0
+    else [(.bar.layout.tray // [])[] | select(entry_id != $drawer)] | length end
+  ' "$(source_file)")
+  echo "$waiting"
+  [[ $waiting -gt 0 ]] || return 0
+  commit "$NORMALIZE | $DEFS"'
+    drawer_section as $ds
+    | [(.bar.layout.tray // [])[] | select(entry_id != $drawer)] as $moved
+    | ($moved | map(entry_id)) as $ids
+    | .bar.layout.tray |= map(select(entry_id == $drawer))
+    | .bar.layout[$ds] |= map(
+        if entry_id == $drawer then
+          (if type == "object" then . else {id: .} end)
+          | .parked = (((.parked // []) | map(select(entry_id as $e | ($ids | index($e)) == null))) + $moved)
+        else . end)
+  ' --arg drawer "$DRAWER"
+}
+
+# Park a widget that the bar has already deleted (dragged off the bar onto the
+# drawer's popup). The caller supplies the entry it saved before the drag, so
+# the widget's settings survive. If the widget is still on the bar, it is moved.
+cmd_adopt() {
+  local entry=$1 id
+  jq -e 'type == "object" or type == "string"' <<<"$entry" >/dev/null 2>&1 || fail "adopt: entry must be a JSON object or string"
+  id=$(jq -r 'if type == "object" then (.id // "") else . end' <<<"$entry")
+  [[ -n $id ]] || fail "adopt: entry has no id"
+  [[ $id != "$DRAWER" ]] || fail "the drawer can't park itself"
+  commit "$NORMALIZE | $DEFS"'
+    drawer_section as $ds
+    | if $ds == null then error("drawer is not on the bar") else . end
+    | .bar.layout |= with_entries(
+        if (.key | IN(sections[])) and (.value | type) == "array" then .value |= map(select(entry_id != $id)) else . end)
+    | .bar.layout[$ds] |= map(
+        if entry_id == $drawer then
+          (if type == "object" then . else {id: .} end)
+          | .parked = (((.parked // []) | map(select(entry_id != $id))) + [$entry])
+        else . end)
+  ' --arg drawer "$DRAWER" --arg id "$id" --argjson entry "$entry"
+}
+
 case "${1:-}" in
   list) cmd_list ;;
   park) [[ -n ${2:-} ]] || fail "usage: drawerctl park <id>"; cmd_park "$2" ;;
   restore) [[ -n ${2:-} ]] || fail "usage: drawerctl restore <id>"; cmd_restore "$2" ;;
-  *) echo "usage: drawerctl list | park <id> | restore <id>" >&2; exit 2 ;;
+  park-tray) cmd_park_tray ;;
+  adopt) [[ -n ${2:-} ]] || fail "usage: drawerctl adopt <entry-json>"; cmd_adopt "$2" ;;
+  *) echo "usage: drawerctl list | park <id> | restore <id> | park-tray | adopt <entry-json>" >&2; exit 2 ;;
 esac

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "taylorburke.widget-drawer",
   "name": "Widget Drawer",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "Taylor Burke",
   "description": "Park bar widgets you aren't using in a drawer instead of uninstalling them. Their plugins stay installed and running; one click puts them back.",
   "license": "MIT",
@@ -13,6 +13,16 @@
     "description": "One icon holding the widgets you've parked; click to park or restore widgets.",
     "category": "System",
     "allowMultiple": false,
-    "defaultSection": "right"
+    "defaultSection": "right",
+    "defaults": { "autoPark": true },
+    "schema": [
+      {
+        "key": "autoPark",
+        "type": "boolean",
+        "label": "Park widgets dropped in the tray drawer",
+        "defaultValue": true,
+        "description": "Drag a bar widget into the tray's drawer and it is parked here automatically. Turn off if you use the tray drawer for widgets you want to keep on the bar."
+      }
+    ]
   }
 }
