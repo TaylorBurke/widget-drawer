@@ -128,12 +128,17 @@ cmd_park_tray() {
 # drawer's popup). The caller supplies the entry it saved before the drag, so
 # the widget's settings survive. If the widget is still on the bar, it is moved.
 cmd_adopt() {
-  local entry=$1 id
+  local entry id
+  # The entry carries the widget's saved settings, so it arrives on stdin (one
+  # JSON line) and reaches jq through the environment. Neither goes in argv,
+  # where other local users could read it from /proc.
+  IFS= read -r entry || true
+  [[ -n $entry ]] || fail "usage: echo <entry-json> | drawerctl adopt"
   jq -e 'type == "object" or type == "string"' <<<"$entry" >/dev/null 2>&1 || fail "adopt: entry must be a JSON object or string"
   id=$(jq -r 'if type == "object" then (.id // "") else . end' <<<"$entry")
   [[ -n $id ]] || fail "adopt: entry has no id"
   [[ $id != "$DRAWER" ]] || fail "the drawer can't park itself"
-  commit "$NORMALIZE | $DEFS"'
+  ENTRY="$entry" commit "$NORMALIZE | $DEFS"'
     drawer_section as $ds
     | if $ds == null then error("drawer is not on the bar") else . end
     | .bar.layout |= with_entries(
@@ -141,9 +146,9 @@ cmd_adopt() {
     | .bar.layout[$ds] |= map(
         if entry_id == $drawer then
           (if type == "object" then . else {id: .} end)
-          | .parked = (((.parked // []) | map(select(entry_id != $id))) + [$entry])
+          | .parked = (((.parked // []) | map(select(entry_id != $id))) + [$ENV.ENTRY | fromjson])
         else . end)
-  ' --arg drawer "$DRAWER" --arg id "$id" --argjson entry "$entry"
+  ' --arg drawer "$DRAWER" --arg id "$id"
 }
 
 case "${1:-}" in
@@ -151,6 +156,6 @@ case "${1:-}" in
   park) [[ -n ${2:-} ]] || fail "usage: drawerctl park <id>"; cmd_park "$2" ;;
   restore) [[ -n ${2:-} ]] || fail "usage: drawerctl restore <id>"; cmd_restore "$2" ;;
   park-tray) cmd_park_tray ;;
-  adopt) [[ -n ${2:-} ]] || fail "usage: drawerctl adopt <entry-json>"; cmd_adopt "$2" ;;
-  *) echo "usage: drawerctl list | park <id> | restore <id> | park-tray | adopt <entry-json>" >&2; exit 2 ;;
+  adopt) cmd_adopt ;;
+  *) echo "usage: drawerctl list | park <id> | restore <id> | park-tray | adopt (entry JSON on stdin)" >&2; exit 2 ;;
 esac

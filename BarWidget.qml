@@ -31,13 +31,19 @@ BarWidget {
   function refresh() { listProc.running = true }
 
   property var pending: []
-  function run(args) {
-    pending.push([ctl].concat(args))
+  property string pendingInput: ""
+  // `input`, when given, goes to the helper's stdin, never its argument list,
+  // so a widget's saved settings can't be read from /proc/<pid>/cmdline.
+  function run(args, input) {
+    pending.push({ cmd: [ctl].concat(args), input: input === undefined ? "" : input })
     if (!actionProc.running) next()
   }
   function next() {
     if (pending.length === 0) return
-    actionProc.command = pending.shift()
+    var job = pending.shift()
+    pendingInput = job.input
+    actionProc.command = job.cmd
+    actionProc.stdinEnabled = job.input !== ""
     actionProc.running = true
   }
 
@@ -64,7 +70,10 @@ BarWidget {
     stderr: StdioCollector {
       onStreamFinished: root.lastError = text.trim().slice(0, 300)
     }
-    onStarted: root.lastError = ""
+    onStarted: {
+      root.lastError = ""
+      if (root.pendingInput !== "") { write(root.pendingInput + "\n"); root.pendingInput = "" }
+    }
     onExited: { root.refresh(); root.next() }
   }
 
@@ -120,7 +129,7 @@ BarWidget {
       adoptTimer.stop()
       dragSnapshot = null
       if (autoPark && popupSeenDuringDrag && (!cursorOk || releasedOverCard))
-        gone.forEach(function(id) { root.run(["adopt", JSON.stringify(before[id])]) })
+        gone.forEach(function(id) { root.run(["adopt"], JSON.stringify(before[id])) })
       return
     }
     if (++adoptTries >= 6) { adoptTimer.stop(); dragSnapshot = null }
